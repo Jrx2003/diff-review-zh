@@ -1,0 +1,1704 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>代码变更审查 - AI Agent 修改详解</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400;1,9..40,500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* =============================================================
+       DIFF-REVIEW DESIGN SYSTEM
+       精确复制自 codebase-to-course
+       ============================================================= */
+    :root {
+      --color-bg:             #FAF7F2;
+      --color-bg-warm:        #F5F0E8;
+      --color-bg-code:        #1E1E2E;
+      --color-text:           #2C2A28;
+      --color-text-secondary: #6B6560;
+      --color-text-muted:     #9E9790;
+      --color-border:         #E5DFD6;
+      --color-border-light:   #EEEBE5;
+      --color-surface:        #FFFFFF;
+      --color-surface-warm:   #FDF9F3;
+      --color-accent:         #2A7B9B;
+      --color-accent-hover:   #1F6280;
+      --color-accent-light:   #E4F2F7;
+      --color-accent-muted:   #5A9DB8;
+      --color-success:        #2D8B55;
+      --color-success-light:  #E8F5EE;
+      --color-error:          #C93B3B;
+      --color-error-light:    #FDE8E8;
+      --color-added:          #2D8B55;
+      --color-removed:        #C93B3B;
+      --color-actor-1:        #D94F30;
+      --color-actor-2:        #2A7B9B;
+      --color-actor-3:        #7B6DAA;
+      --font-display: 'Bricolage Grotesque', Georgia, serif;
+      --font-body:    'DM Sans', -apple-system, sans-serif;
+      --font-mono:    'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+      --text-xs:   0.75rem;
+      --text-sm:   0.875rem;
+      --text-base: 1rem;
+      --text-lg:   1.125rem;
+      --text-xl:   1.25rem;
+      --text-2xl:  1.5rem;
+      --text-3xl:  1.875rem;
+      --text-4xl:  2.25rem;
+      --text-5xl:  3rem;
+      --text-6xl:  3.75rem;
+      --leading-tight:  1.15;
+      --leading-snug:   1.3;
+      --leading-normal: 1.6;
+      --space-1:  0.25rem;
+      --space-2:  0.5rem;
+      --space-3:  0.75rem;
+      --space-4:  1rem;
+      --space-5:  1.25rem;
+      --space-6:  1.5rem;
+      --space-8:  2rem;
+      --space-10: 2.5rem;
+      --space-12: 3rem;
+      --space-16: 4rem;
+      --space-20: 5rem;
+      --content-width:      800px;
+      --content-width-wide: 1000px;
+      --radius-sm:   8px;
+      --radius-md:   12px;
+      --radius-lg:   16px;
+      --radius-full: 9999px;
+      --shadow-sm: 0 1px 2px rgba(44,42,40,0.05);
+      --shadow-md: 0 4px 12px rgba(44,42,40,0.08);
+      --shadow-lg: 0 8px 24px rgba(44,42,40,0.10);
+      --ease-out:    cubic-bezier(0.16,1,0.3,1);
+      --duration-fast:   150ms;
+      --duration-normal: 300ms;
+      --duration-slow:   500ms;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      scroll-snap-type: y proximity;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font-body);
+      font-size: var(--text-base);
+      color: var(--color-text);
+      line-height: var(--leading-normal);
+      background: var(--color-bg);
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb {
+      background: var(--color-border);
+      border-radius: var(--radius-full);
+    }
+
+    /* ── CODE GLOBALS ───────────────────────────────────────────── */
+    pre, code {
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-x: hidden;
+    }
+
+    .translation-code pre {
+      white-space: pre;
+    }
+
+    .translation-code::-webkit-scrollbar,
+    pre::-webkit-scrollbar { display: none; }
+
+    .code-keyword  { color: #CBA6F7; }
+    .code-string   { color: #A6E3A1; }
+    .code-function { color: #89B4FA; }
+    .code-comment  { color: #6C7086; font-style: italic; }
+    .code-number   { color: #FAB387; }
+    .code-property { color: #F9E2AF; }
+    .code-line     { display: block; }
+
+    /* ── NAV ────────────────────────────────────────────────────── */
+    .nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 50px;
+      z-index: 1000;
+      background: rgba(250,247,242,0.92);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .nav-inner {
+      max-width: var(--content-width-wide);
+      margin: 0 auto;
+      padding: 0 var(--space-6);
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-4);
+    }
+
+    .nav-title {
+      font-family: var(--font-display);
+      font-size: var(--text-sm);
+      font-weight: 600;
+      color: var(--color-text);
+    }
+
+    .nav-dots {
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .nav-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      border: 2px solid var(--color-text-muted);
+      background: transparent;
+      cursor: pointer;
+      transition: all var(--duration-fast);
+    }
+    .nav-dot.active {
+      border-color: var(--color-accent);
+      background: var(--color-accent);
+      box-shadow: 0 0 0 3px var(--color-accent-light);
+    }
+
+    /* ── MODULE STRUCTURE ───────────────────────────────────────── */
+    .module {
+      min-height: 100dvh;
+      min-height: 100vh;
+      scroll-snap-align: start;
+      padding: var(--space-16) var(--space-6);
+      padding-top: calc(50px + var(--space-12));
+    }
+
+    .module-content {
+      max-width: var(--content-width);
+      margin: 0 auto;
+    }
+
+    .module-header { margin-bottom: var(--space-12); }
+
+    .module-number {
+      display: block;
+      font-family: var(--font-display);
+      font-size: var(--text-6xl);
+      font-weight: 800;
+      color: var(--color-accent);
+      opacity: 0.15;
+      line-height: 1;
+      margin-bottom: var(--space-2);
+    }
+
+    .module-title {
+      font-family: var(--font-display);
+      font-size: var(--text-4xl);
+      font-weight: 700;
+      line-height: var(--leading-tight);
+      color: var(--color-text);
+    }
+
+    .module-subtitle {
+      margin-top: var(--space-3);
+      font-size: var(--text-lg);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-snug);
+    }
+
+    /* ── TRANSLATION BLOCKS ─────────────────────────────────────── */
+    .translation-block {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      margin: var(--space-8) 0;
+    }
+
+    .file-header {
+      background: var(--color-bg-tertiary, #252536);
+      padding: var(--space-3) var(--space-4);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: #6C7086;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .file-header-icon {
+      color: var(--color-accent);
+    }
+
+    .file-header-path {
+      color: #CDD6F4;
+    }
+
+    .file-header-stats {
+      margin-left: auto;
+      display: flex;
+      gap: var(--space-2);
+    }
+
+    .file-header-stats .added { color: #A6E3A1; }
+    .file-header-stats .removed { color: #F38BA8; }
+
+    .code-block-wrapper {
+      background: var(--color-bg-code);
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      box-shadow: var(--shadow-md);
+      margin: var(--space-8) 0;
+    }
+
+    .code-block-wrapper .file-header {
+      background: rgba(0,0,0,0.3);
+      padding: var(--space-3) var(--space-4);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      color: #6C7086;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+
+    .code-block-content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      min-height: 200px;
+    }
+
+    .code-panel {
+      overflow-x: auto;
+      overflow-y: hidden;
+      background: var(--color-bg-code);
+      position: relative;
+    }
+
+    .code-panel::-webkit-scrollbar {
+      height: 8px;
+    }
+
+    .code-panel::-webkit-scrollbar-track {
+      background: rgba(0,0,0,0.2);
+    }
+
+    .code-panel::-webkit-scrollbar-thumb {
+      background: #6C7086;
+      border-radius: 4px;
+    }
+
+    .code-panel::-webkit-scrollbar-thumb:hover {
+      background: #9399B2;
+    }
+
+    .code-panel pre {
+      margin: 0;
+      padding: var(--space-6);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      line-height: 1.6;
+      white-space: pre;
+      min-width: max-content;
+    }
+
+    .explanation-panel {
+      background: var(--color-surface-warm);
+      padding: var(--space-6);
+      font-size: var(--text-sm);
+      line-height: 1.7;
+      border-left: 3px solid var(--color-accent);
+    }
+
+    .explanation-panel .translation-label {
+      display: block;
+      margin-bottom: var(--space-3);
+      color: var(--color-text-muted);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+
+    .translation-code {
+      background: var(--color-bg-code);
+      color: #CDD6F4;
+      padding: var(--space-6);
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      line-height: 1.7;
+      position: relative;
+      overflow-x: auto;
+      cursor: grab;
+    }
+
+    .translation-english {
+      background: var(--color-surface-warm);
+      padding: var(--space-6);
+      font-size: var(--text-sm);
+      line-height: 1.7;
+      border-left: 3px solid var(--color-accent);
+    }
+
+    .translation-label {
+      position: absolute;
+      top: var(--space-2);
+      right: var(--space-3);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      opacity: 0.5;
+    }
+    .translation-english .translation-label {
+      position: static;
+      display: block;
+      margin-bottom: var(--space-3);
+      color: var(--color-text-muted);
+    }
+
+    .translation-lines .tl {
+      padding: var(--space-1) 0;
+      border-bottom: 1px solid var(--color-border-light);
+      color: var(--color-text-secondary);
+    }
+    .translation-lines .tl:last-child { border-bottom: none; }
+    .translation-lines .tl strong { color: var(--color-text); font-weight: 600; }
+    .translation-lines .tl code {
+      background: var(--color-bg);
+      padding: var(--space-1) var(--space-2);
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+    }
+
+    /* Code lines with highlighting */
+    .code-line {
+      display: block;
+      line-height: 1.6;
+      min-height: 1.6em;
+    }
+    .line-number {
+      display: inline-block;
+      width: 40px;
+      color: #6C7086;
+      user-select: none;
+      font-size: var(--text-xs);
+      text-align: right;
+      margin-right: var(--space-3);
+    }
+    .line-content { color: #CDD6F4; }
+
+    .code-line.added {
+      background: rgba(166, 227, 161, 0.15);
+      margin: 0 calc(-1 * var(--space-6));
+      padding: 0 var(--space-6);
+    }
+    .code-line.added .line-content { color: #A6E3A1; }
+
+    .code-line.removed {
+      background: rgba(243, 139, 168, 0.15);
+      margin: 0 calc(-1 * var(--space-6));
+      padding: 0 var(--space-6);
+    }
+    .code-line.removed .line-content { color: #F38BA8; }
+
+    /* ── FILE TREE MAP ──────────────────────────────────────────── */
+    .file-tree-section {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      box-shadow: var(--shadow-md);
+      margin: var(--space-8) 0;
+    }
+
+    .file-tree-header {
+      display: flex;
+      align-items: center;
+      gap: var(--space-4);
+      margin-bottom: var(--space-6);
+      padding-bottom: var(--space-4);
+      border-bottom: 1px solid var(--color-border-light);
+    }
+
+    .file-tree-icon {
+      width: 48px; height: 48px;
+      background: var(--color-accent);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+    }
+
+    .file-tree-title h3 {
+      font-family: var(--font-display);
+      font-size: var(--text-xl);
+      font-weight: 700;
+    }
+    .file-tree-title p {
+      color: var(--color-text-secondary);
+      font-size: var(--text-sm);
+      margin: 0;
+    }
+
+    .file-tree {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+    }
+
+    .ft-folder, .ft-file {
+      padding: var(--space-2) var(--space-3);
+      border-left: 2px solid var(--color-border-light);
+      margin-left: var(--space-4);
+    }
+
+    .ft-folder > .ft-name {
+      color: var(--color-accent);
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .ft-folder > .ft-name:hover { color: var(--color-accent-hover); }
+    .ft-folder > .ft-name::before { content: '📁 '; }
+    .ft-folder.collapsed > .ft-name::before { content: '📂 '; }
+
+    .ft-file > .ft-name::before { content: '📄 '; }
+    .ft-file {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      transition: all var(--duration-fast);
+    }
+    .ft-file:hover {
+      background: var(--color-accent-light);
+      border-radius: var(--radius-sm);
+      margin-left: calc(var(--space-4) - 2px);
+      padding-left: calc(var(--space-3) + 2px);
+    }
+
+    .ft-file.modified { border-left-color: var(--color-accent); }
+    .ft-file.added { border-left-color: var(--color-success); }
+    .ft-file.removed { border-left-color: var(--color-error); text-decoration: line-through; opacity: 0.6; }
+
+    .ft-desc {
+      color: var(--color-text-secondary);
+      font-family: var(--font-body);
+      margin-left: var(--space-2);
+      font-size: var(--text-xs);
+    }
+
+    .ft-children { margin-left: var(--space-4); }
+
+    .ft-stats {
+      display: flex;
+      gap: var(--space-2);
+      font-size: var(--text-xs);
+    }
+    .ft-stats .added { color: var(--color-success); }
+    .ft-stats .removed { color: var(--color-error); }
+
+    /* ── GROUP CHAT (Runtime Logic) ─────────────────────────────── */
+    .chat-window {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+      margin: var(--space-8) 0;
+    }
+
+    .chat-messages {
+      padding: var(--space-6);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-4);
+      min-height: 300px;
+    }
+
+    .chat-message {
+      display: flex;
+      align-items: flex-end;
+      gap: var(--space-3);
+      animation: fadeSlideUp 0.3s var(--ease-out);
+    }
+
+    .chat-avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: var(--text-sm);
+      font-weight: 700;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .chat-bubble {
+      max-width: 75%;
+      background: var(--color-bg-warm);
+      border-radius: var(--radius-md) var(--radius-md) var(--radius-md) 4px;
+      padding: var(--space-3) var(--space-4);
+    }
+    .chat-bubble.user {
+      background: var(--color-accent-light);
+      margin-left: auto;
+      border-radius: var(--radius-md) var(--radius-md) 4px var(--radius-md);
+    }
+
+    .chat-sender {
+      display: block;
+      font-size: var(--text-xs);
+      font-weight: 700;
+      margin-bottom: var(--space-1);
+      font-family: var(--font-mono);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .chat-bubble p {
+      font-size: var(--text-sm);
+      margin: 0;
+      line-height: var(--leading-normal);
+    }
+    .chat-bubble code {
+      background: rgba(0,0,0,0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+    }
+
+    .chat-bubble .highlight {
+      background: rgba(217,79,48,0.1);
+      padding: 2px 4px;
+      border-radius: 4px;
+      color: var(--color-actor-1);
+      font-weight: 600;
+    }
+
+    .chat-controls {
+      padding: var(--space-4) var(--space-6);
+      border-top: 1px solid var(--color-border-light);
+      display: flex;
+      align-items: center;
+      gap: var(--space-3);
+      background: var(--color-surface-warm);
+    }
+
+    .btn {
+      padding: var(--space-2) var(--space-5);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      font-family: var(--font-body);
+      font-size: var(--text-sm);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all var(--duration-fast);
+      color: var(--color-text-secondary);
+    }
+    .btn:hover { border-color: var(--color-accent-muted); color: var(--color-accent); }
+    .btn-primary {
+      background: var(--color-accent);
+      color: white;
+      border-color: var(--color-accent);
+    }
+    .btn-primary:hover { background: var(--color-accent-hover); border-color: var(--color-accent-hover); color: white; }
+
+    /* ── FLOW ANIMATION (Data Flow) ─────────────────────────────── */
+    .flow-animation {
+      position: relative;
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--space-8);
+      box-shadow: var(--shadow-md);
+      margin: var(--space-8) 0;
+    }
+
+    .flow-actors {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      gap: var(--space-4);
+      margin-bottom: var(--space-8);
+      flex-wrap: wrap;
+    }
+
+    .flow-actor {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-2);
+      transition: all var(--duration-normal) var(--ease-out);
+    }
+
+    .flow-actor-icon {
+      width: 56px; height: 56px;
+      border-radius: var(--radius-md);
+      background: var(--color-bg-warm);
+      border: 2px solid var(--color-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: var(--text-xl);
+      font-weight: 700;
+      transition: all var(--duration-normal) var(--ease-out);
+    }
+
+    .flow-actor span {
+      font-size: var(--text-xs);
+      color: var(--color-text-secondary);
+      font-family: var(--font-mono);
+      text-align: center;
+    }
+
+    .flow-actor.active .flow-actor-icon {
+      border-color: var(--color-accent);
+      background: var(--color-accent-light);
+      box-shadow: 0 0 0 3px var(--color-accent-light), 0 0 20px rgba(42,123,155,0.15);
+      transform: scale(1.1);
+    }
+
+    .flow-log {
+      background: var(--color-bg-code);
+      border-radius: var(--radius-md);
+      padding: var(--space-4);
+      min-height: 150px;
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      color: #CDD6F4;
+    }
+
+    .flow-log-line {
+      display: block;
+      padding: var(--space-1) 0;
+      opacity: 0;
+      transform: translateX(-10px);
+      animation: fadeSlideRight 0.3s var(--ease-out) forwards;
+    }
+    .flow-log-line:nth-child(1) { animation-delay: 0.1s; }
+    .flow-log-line:nth-child(2) { animation-delay: 0.2s; }
+    .flow-log-line:nth-child(3) { animation-delay: 0.3s; }
+    .flow-log-line:nth-child(4) { animation-delay: 0.4s; }
+    .flow-log-line:nth-child(5) { animation-delay: 0.5s; }
+
+    .flow-log-line .timestamp { color: #6C7086; margin-right: var(--space-2); }
+    .flow-log-line .level { color: #89B4FA; margin-right: var(--space-2); }
+    .flow-log-line .level.warn { color: #FAB387; }
+    .flow-log-line .level.error { color: #F38BA8; }
+    .flow-log-line .level.success { color: #A6E3A1; }
+
+    /* ── CALLOUT ─────────────────────────────────────────────────── */
+    .callout {
+      display: flex;
+      gap: var(--space-4);
+      padding: var(--space-5);
+      border-radius: var(--radius-md);
+      margin: var(--space-6) 0;
+      border-left: 4px solid;
+    }
+    .callout-accent { background: var(--color-accent-light); border-color: var(--color-accent); }
+    .callout-success { background: var(--color-success-light); border-color: var(--color-success); }
+
+    .callout-icon { font-size: 1.25rem; flex-shrink: 0; margin-top: 2px; }
+    .callout-title {
+      display: block;
+      font-family: var(--font-display);
+      font-weight: 700;
+      margin-bottom: var(--space-1);
+    }
+    .callout-content p {
+      font-size: var(--text-sm);
+      margin: 0;
+      color: var(--color-text-secondary);
+    }
+    .callout-content code {
+      background: var(--color-bg);
+      padding: 2px 6px;
+      border-radius: var(--radius-sm);
+      font-family: var(--font-mono);
+      font-size: var(--text-xs);
+    }
+
+    /* ── PATTERN CARDS ──────────────────────────────────────────── */
+    .pattern-cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-4);
+      margin: var(--space-6) 0;
+    }
+    .pattern-card {
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      box-shadow: var(--shadow-sm);
+      border-top: 3px solid var(--color-accent);
+      transition: transform var(--duration-normal) var(--ease-out), box-shadow var(--duration-normal);
+    }
+    .pattern-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-md);
+    }
+    .pattern-card.feature { border-top-color: var(--color-success); }
+    .pattern-card.fix { border-top-color: var(--color-accent); }
+    .pattern-card.refactor { border-top-color: var(--color-text-muted); }
+
+    .pattern-icon {
+      width: 40px; height: 40px;
+      border-radius: var(--radius-sm);
+      background: var(--color-accent-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      margin-bottom: var(--space-3);
+    }
+    .pattern-card.feature .pattern-icon { background: var(--color-success-light); }
+
+    .pattern-title {
+      font-family: var(--font-display);
+      font-size: var(--text-base);
+      font-weight: 700;
+      margin-bottom: var(--space-2);
+    }
+    .pattern-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+      line-height: var(--leading-normal);
+      margin: 0;
+    }
+
+    /* ── STATS GRID ─────────────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: var(--space-4);
+      margin: var(--space-8) 0;
+    }
+    .stat-card {
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      padding: var(--space-5);
+      text-align: center;
+      box-shadow: var(--shadow-sm);
+    }
+    .stat-value {
+      font-family: var(--font-display);
+      font-size: var(--text-3xl);
+      font-weight: 700;
+      margin-bottom: var(--space-1);
+    }
+    .stat-value.added { color: var(--color-success); }
+    .stat-value.removed { color: var(--color-error); }
+    .stat-value.files { color: var(--color-accent); }
+    .stat-label {
+      font-size: var(--text-xs);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-muted);
+    }
+
+    /* ── GLOSSARY TOOLTIPS ──────────────────────────────────────── */
+    .term {
+      border-bottom: 1.5px dashed var(--color-accent-muted);
+      cursor: pointer;
+      color: var(--color-accent);
+      font-weight: 500;
+    }
+    .term:hover {
+      border-bottom-color: var(--color-accent);
+    }
+    .term-tooltip {
+      position: fixed;
+      background: var(--color-bg-code);
+      color: #CDD6F4;
+      padding: var(--space-3) var(--space-4);
+      border-radius: var(--radius-sm);
+      font-size: var(--text-sm);
+      width: max(200px, min(320px, 80vw));
+      box-shadow: var(--shadow-lg);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity var(--duration-fast);
+      z-index: 10000;
+    }
+    .term-tooltip.visible { opacity: 1; }
+
+    /* ── STATE COMPARISON ───────────────────────────────────────── */
+    .state-comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--space-4);
+      margin: var(--space-8) 0;
+    }
+    .state-box {
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      padding: var(--space-6);
+      box-shadow: var(--shadow-sm);
+    }
+    .state-box.before { border-top: 3px solid var(--color-error); }
+    .state-box.after { border-top: 3px solid var(--color-success); }
+
+    .state-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      margin-bottom: var(--space-4);
+      display: flex;
+      align-items: center;
+      gap: var(--space-2);
+    }
+    .state-box.before .state-title { color: var(--color-error); }
+    .state-box.after .state-title { color: var(--color-success); }
+
+    .state-content {
+      font-family: var(--font-mono);
+      font-size: var(--text-sm);
+      background: var(--color-bg-code);
+      padding: var(--space-4);
+      border-radius: var(--radius-sm);
+      color: #CDD6F4;
+    }
+    .state-content .line { display: block; padding: 2px 0; }
+    .state-content .highlight { color: #F9E2AF; }
+    .state-content .error { color: #F38BA8; }
+    .state-content .success { color: #A6E3A1; }
+
+    /* ── TIMELINE ────────────────────────────────────────────────── */
+    .timeline {
+      position: relative;
+      margin: var(--space-8) 0;
+      padding-left: var(--space-8);
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 15px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--color-border);
+    }
+    .timeline-item {
+      position: relative;
+      margin-bottom: var(--space-6);
+      padding: var(--space-4);
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: calc(-1 * var(--space-8) + 8px);
+      top: var(--space-4);
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--color-accent);
+      border: 3px solid var(--color-bg);
+    }
+    .timeline-item.added::before { background: var(--color-success); }
+    .timeline-item.modified::before { background: var(--color-accent); }
+    .timeline-item.fixed::before { background: var(--color-error); }
+
+    .timeline-title {
+      font-weight: 700;
+      margin-bottom: var(--space-1);
+    }
+    .timeline-desc {
+      font-size: var(--text-sm);
+      color: var(--color-text-secondary);
+    }
+
+    /* ── KEYFRAMES ──────────────────────────────────────────────── */
+    @keyframes fadeSlideUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeSlideRight {
+      from { opacity: 0; transform: translateX(-10px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+
+    /* ── RESPONSIVE ─────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .translation-block { grid-template-columns: 1fr; }
+      .translation-english { border-left: none; border-top: 3px solid var(--color-accent); }
+      .pattern-cards { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .state-comparison { grid-template-columns: 1fr; }
+      .code-block-content { grid-template-columns: 1fr; }
+      .explanation-panel { border-left: none; border-top: 3px solid var(--color-accent); }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <span class="nav-title">代码变更审查</span>
+      <div class="nav-dots">
+        <button class="nav-dot active" onclick="scrollToModule(0)" title="项目结构"></button>
+        <button class="nav-dot" onclick="scrollToModule(1)" title="运行时对话"></button>
+        <button class="nav-dot" onclick="scrollToModule(2)" title="数据流追踪"></button>
+        <button class="nav-dot" onclick="scrollToModule(3)" title="状态对比"></button>
+        <button class="nav-dot" onclick="scrollToModule(4)" title="代码详情"></button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Module 1: 完整项目结构 -->
+  <section class="module" id="module-0">
+    <div class="module-content">
+      <div class="module-header">
+        <div class="module-number">01</div>
+        <h1 class="module-title">项目结构总览</h1>
+        <p class="module-subtitle">完整的文件树，高亮显示本次修改的文件</p>
+      </div>
+
+      <!-- 统计卡片 -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value added">+1967</div>
+          <div class="stat-label">添加行数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value removed">-59</div>
+          <div class="stat-label">删除行数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value files">9</div>
+          <div class="stat-label">修改文件</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color: var(--color-accent);">3</div>
+          <div class="stat-label">新增方法</div>
+        </div>
+      </div>
+
+      <!-- 完整文件树 -->
+      <div class="file-tree-section">
+        <div class="file-tree-header">
+          <div class="file-tree-icon">🗂️</div>
+          <div class="file-tree-title">
+            <h3>aCAD.subagent.iteration 项目结构</h3>
+            <p>共 47 个文件，9 个文件有变更</p>
+          </div>
+        </div>
+
+        <div class="file-tree">
+          <!-- src/ -->
+          <div class="ft-folder">
+            <span class="ft-name">src/</span>
+            <div class="ft-children">
+              <!-- sub_agent_runtime/ -->
+              <div class="ft-folder">
+                <span class="ft-name">sub_agent_runtime/</span>
+                <span class="ft-desc">SubAgent 运行时核心</span>
+                <div class="ft-children">
+                  <div class="ft-file modified" onclick="scrollToModule(4)">
+                    <span class="ft-name">runner.py</span>
+                    <span class="ft-desc">核心 runner 逻辑</span>
+                    <div class="ft-stats">
+                      <span class="added">+180</span>
+                      <span class="removed">-25</span>
+                    </div>
+                  </div>
+                  <div class="ft-file">
+                    <span class="ft-name">__init__.py</span>
+                  </div>
+                  <div class="ft-file">
+                    <span class="ft-name">models.py</span>
+                    <span class="ft-desc">数据模型定义</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- sandbox_mcp_server/ -->
+              <div class="ft-folder">
+                <span class="ft-name">sandbox_mcp_server/</span>
+                <span class="ft-desc">MCP 服务器实现</span>
+                <div class="ft-children">
+                  <div class="ft-file modified" onclick="scrollToModule(4)">
+                    <span class="ft-name">registry.py</span>
+                    <span class="ft-desc">路径归一化注册表</span>
+                    <div class="ft-stats">
+                      <span class="added">+20</span>
+                      <span class="removed">-3</span>
+                    </div>
+                  </div>
+                  <div class="ft-file">
+                    <span class="ft-name">server.py</span>
+                  </div>
+                  <div class="ft-file">
+                    <span class="ft-name">tools.py</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- common/ -->
+              <div class="ft-folder">
+                <span class="ft-name">common/</span>
+                <div class="ft-children">
+                  <div class="ft-file">
+                    <span class="ft-name">utils.py</span>
+                  </div>
+                  <div class="ft-file">
+                    <span class="ft-name">types.py</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- tests/ -->
+          <div class="ft-folder">
+            <span class="ft-name">tests/</span>
+            <div class="ft-children">
+              <div class="ft-folder">
+                <span class="ft-name">sub_agent_runtime/</span>
+                <div class="ft-children">
+                  <div class="ft-file added">
+                    <span class="ft-name">test_runner_contracts.py</span>
+                    <span class="ft-desc">新增测试文件</span>
+                    <div class="ft-stats">
+                      <span class="added">+120</span>
+                    </div>
+                  </div>
+                  <div class="ft-file">
+                    <span class="ft-name">test_runner.py</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- docs/ -->
+          <div class="ft-folder">
+            <span class="ft-name">docs/</span>
+            <div class="ft-children">
+              <div class="ft-folder">
+                <span class="ft-name">work_logs/</span>
+                <div class="ft-children">
+                  <div class="ft-file added">
+                    <span class="ft-name">2026-04-01.md</span>
+                    <span class="ft-desc">工作日志</span>
+                    <div class="ft-stats">
+                      <span class="added">+590</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="ft-folder">
+                <span class="ft-name">decisions/</span>
+                <div class="ft-children">
+                  <div class="ft-file modified">
+                    <span class="ft-name">SYSTEM_RECORD.json</span>
+                    <span class="ft-desc">系统记录</span>
+                    <div class="ft-stats">
+                      <span class="added">+8</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Root files -->
+          <div class="ft-file modified">
+            <span class="ft-name">CODEX.md</span>
+            <span class="ft-desc">架构文档</span>
+            <div class="ft-stats">
+              <span class="added">+146</span>
+            </div>
+          </div>
+          <div class="ft-file">
+            <span class="ft-name">README.md</span>
+          </div>
+          <div class="ft-file">
+            <span class="ft-name">pyproject.toml</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 变更类型卡片 -->
+      <div class="pattern-cards">
+        <div class="pattern-card feature">
+          <div class="pattern-icon">✨</div>
+          <h3 class="pattern-title">新功能</h3>
+          <p class="pattern-desc">添加 3 个新方法，包括状态检测、环形模式自动完成</p>
+        </div>
+        <div class="pattern-card fix">
+          <div class="pattern-icon">🔧</div>
+          <h3 class="pattern-title">问题修复</h3>
+          <p class="pattern-desc">修复状态检测误判和路径归一化问题</p>
+        </div>
+        <div class="pattern-card refactor">
+          <div class="pattern-icon">♻️</div>
+          <h3 class="pattern-title">代码重构</h3>
+          <p class="pattern-desc">提取复杂条件为独立方法，提高可维护性</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Module 2: 运行时对话模拟 -->
+  <section class="module" id="module-1">
+    <div class="module-content">
+      <div class="module-header">
+        <div class="module-number">02</div>
+        <h1 class="module-title">修改后的运行时逻辑</h1>
+        <p class="module-subtitle">展示代码修改如何影响实际执行流程</p>
+      </div>
+
+      <div class="callout callout-accent">
+        <div class="callout-icon">💡</div>
+        <div class="callout-content">
+          <span class="callout-title">这个对话展示了什么？</span>
+          <p>模拟 <code>runner.py</code> 修改后的<strong>实际执行过程</strong>，展示新的状态检测逻辑如何处理金字塔创建场景，以及环形种子模式如何自动完成。</p>
+        </div>
+      </div>
+
+      <!-- 运行时对话 -->
+      <div class="chat-window">
+        <div class="chat-messages" id="runtime-chat">
+          <!-- Scene 1: 金字塔创建场景 -->
+          <div class="chat-message" data-step="1">
+            <div class="chat-avatar" style="background: var(--color-actor-2);">U</div>
+            <div class="chat-bubble">
+              <span class="chat-sender" style="color: var(--color-actor-2);">User</span>
+              <p>创建一个金字塔</p>
+            </div>
+          </div>
+
+          <div class="chat-message" data-step="2">
+            <div class="chat-avatar" style="background: var(--color-actor-1);">R</div>
+            <div class="chat-bubble">
+              <span class="chat-sender" style="color: var(--color-actor-1);">Runner</span>
+              <p>收到请求。检查当前状态：<br>
+              <code>solid_count = 0</code>,
+              <code>executed_actions = []</code><br>
+              <span class="highlight">判定：预 solid 启动状态</span> → 选择引导动作</p>
+            </div>
+          </div>
+
+          <div class="chat-message" data-step="3" style="display: none;">
+            <div class="chat-avatar" style="background: var(--color-actor-1);">R</div>
+            <div class="chat-bubble">
+              <span class="chat-sender" style="color: var(--color-actor-1);">Runner</span>
+              <p>执行: <code>create_sketch(plane="XY")</code><br>
+              绘制金字塔底面正方形...</p>
+            </div>
+          </div>
+
+          <div class="chat-message" data-step="4" style="display: none;">
+            <div class="chat-avatar" style="background: var(--color-actor-1);">R</div>
+            <div class="chat-bubble">
+              <span class="chat-sender" style="color: var(--color-actor-1);">Runner</span>
+              <p>状态更新：<br>
+              <code>solid_count = 0</code>,
+              <code>executed_actions = ["create_sketch"]</code><br>
+              调用 <code>_is_pre_solid_bootstrap_state()</code>...<br>
+              <span class="highlight">检测到 sketch 动作 → 仍在启动阶段</span></p>
+            </div>
+          </div>
+
+          <div class="chat-message" data-step="5" style="display: none;">
+            <div class="chat-avatar" style="background: var(--color-actor-1);">R</div>
+            <div class="chat-bubble">
+              <span class="chat-sender" style="color: var(--color-actor-1);">Runner</span>
+              <p>执行: <code>loft()</code> - 拉伸底面创建金字塔体<br>
+              检查: <code>_executed_actions_imply_existing_solid()</code> → <span style="color: var(--color-success);">True</span><br>
+              <strong>✓ 成功创建金字塔</strong></p>
+            </div>
+          </div>
+
+          <!-- Scene 2: 环形种子模式 -->
+          <div class="chat-message" data-step="6" style="display: none;">
+            <div class="chat-avatar" style="background: var(--color-actor-2);">U</div>
+            <div class="chat-bubble">
+              <span class="chat-sender" style="color: var(--color-actor-2);">User</span>
+              <p>在金字塔周围创建 6 个螺栓孔</p>
+            </div>
+          </div>
+
+          <div class="chat-message" data-step="7" style="display: none;">
+            <div class="chat-avatar" style="background: var(--color-actor-1);">R</div>
+            <div class="chat-bubble">
+              <span class="chat-sender" style="color: var(--color-actor-1);">Runner</span>
+              <p>检测到 <span class="highlight">环形种子模式</span> 特征：<br>
+              - 动作数: 1 (create_sketch)<br>
+              - 草图特征: 圆形孔<br>
+              - 意图: 圆周阵列</p>
+            </div>
+          </div>
+
+          <div class="chat-message" data-step="8" style="display: none;">
+            <div class="chat-avatar" style="background: var(--color-actor-1);">R</div>
+            <div class="chat-bubble">
+              <span class="chat-sender" style="color: var(--color-actor-1);">Runner</span>
+              <p>调用 <code>_append_annular_seed_pattern_completion()</code><br>
+              <span style="color: var(--color-success);">自动补全剩余 5 个孔的草图和拉伸动作</span></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-controls">
+          <button class="btn btn-primary" onclick="nextChatStep()">下一步 →</button>
+          <button class="btn" onclick="resetChat()">重置</button>
+          <span class="chat-progress" id="chat-progress">步骤 1/8</span>
+        </div>
+      </div>
+
+      <!-- 变更要点 -->
+      <div class="callout callout-success">
+        <div class="callout-icon">✅</div>
+        <div class="callout-content">
+          <span class="callout-title">修改带来的运行时改进</span>
+          <p><strong>修复前：</strong>仅根据 <code>solid_count == 0</code> 判断，会误判金字塔创建场景<br>
+          <strong>修复后：</strong>综合分析动作类型，准确识别"预 solid 启动状态"，避免 loft 失败</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Module 3: 数据流追踪 -->
+  <section class="module" id="module-2">
+    <div class="module-content">
+      <div class="module-header">
+        <div class="module-number">03</div>
+        <h1 class="module-title">数据流与状态追踪</h1>
+        <p class="module-subtitle">可视化修改后的数据如何在系统中流动</p>
+      </div>
+
+      <div class="flow-animation">
+        <div class="flow-actors" id="flow-actors">
+          <div class="flow-actor active" data-actor="user">
+            <div class="flow-actor-icon">👤</div>
+            <span>User Request</span>
+          </div>
+          <div class="flow-actor" data-actor="runner">
+            <div class="flow-actor-icon">🏃</div>
+            <span>Runner</span>
+          </div>
+          <div class="flow-actor" data-actor="state">
+            <div class="flow-actor-icon">📊</div>
+            <span>State Check</span>
+          </div>
+          <div class="flow-actor" data-actor="action">
+            <div class="flow-actor-icon">⚡</div>
+            <span>Action Select</span>
+          </div>
+          <div class="flow-actor" data-actor="cad">
+            <div class="flow-actor-icon">📐</div>
+            <span>CAD Engine</span>
+          </div>
+        </div>
+
+        <div class="flow-log" id="flow-log">
+          <span class="flow-log-line"><span class="timestamp">[10:23:01]</span> <span class="level">INFO</span> 收到用户请求: "创建金字塔"</span>
+        </div>
+
+        <div class="chat-controls">
+          <button class="btn btn-primary" onclick="nextFlowStep()">执行下一步 →</button>
+          <button class="btn" onclick="resetFlow()">重置</button>
+        </div>
+      </div>
+
+      <!-- 修改前后的状态对比 -->
+      <h2 class="module-title" style="font-size: var(--text-2xl); margin-top: var(--space-12);">状态检测逻辑对比</h2>
+
+      <div class="state-comparison">
+        <div class="state-box before">
+          <div class="state-title">❌ 修改前</div>
+          <div class="state-content">
+            <span class="line"><span class="code-comment"># 仅根据 solid_count 判断</span></span>
+            <span class="line">no_solid = solid_count == <span class="highlight">0</span></span>
+            <span class="line"></span>
+            <span class="line"><span class="code-comment"># 金字塔创建时的问题:</span></span>
+            <span class="line">solid_count = <span class="highlight">0</span>  <span class="error">✗ 误判!</span></span>
+            <span class="line">但已执行: create_sketch</span>
+            <span class="line"><span class="error">→ loft 失败</span></span>
+          </div>
+        </div>
+
+        <div class="state-box after">
+          <div class="state-title">✅ 修改后</div>
+          <div class="state-content">
+            <span class="line"><span class="code-comment"># 综合分析动作历史</span></span>
+            <span class="line">no_solid = self._is_pre_solid_bootstrap_state(</span>
+            <span class="line">  solid_count, executed_actions</span>
+            <span class="line">)</span>
+            <span class="line"></span>
+            <span class="line"><span class="code-comment"># 金字塔创建时:</span></span>
+            <span class="line">检测到 sketch → <span class="success">✓ 启动阶段</span></span>
+            <span class="line"><span class="success">→ loft 成功</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Module 4: 变更时间线 -->
+  <section class="module" id="module-3">
+    <div class="module-content">
+      <div class="module-header">
+        <div class="module-number">04</div>
+        <h1 class="module-title">完整变更时间线</h1>
+        <p class="module-subtitle">从问题发现到修复上线的完整历程</p>
+      </div>
+
+      <div class="timeline">
+        <div class="timeline-item fixed">
+          <div class="timeline-title">🐛 发现问题 - 金字塔创建失败</div>
+          <div class="timeline-desc">用户报告创建金字塔时 loft 操作失败，runner 误判为"已存在 solid"状态</div>
+        </div>
+
+        <div class="timeline-item added">
+          <div class="timeline-title">🔍 根因分析</div>
+          <div class="timeline-desc">发现问题：仅根据 solid_count 判断状态不可靠，需要分析已执行动作的类型</div>
+        </div>
+
+        <div class="timeline-item added">
+          <div class="timeline-title">✨ 添加 _is_pre_solid_bootstrap_state()</div>
+          <div class="timeline-desc">新方法综合分析 solid_count 和 executed_actions，准确识别启动阶段</div>
+        </div>
+
+        <div class="timeline-item added">
+          <div class="timeline-title">✨ 添加环形种子模式支持</div>
+          <div class="timeline-desc">_append_annular_seed_pattern_completion() 自动检测并补全圆周阵列特征</div>
+        </div>
+
+        <div class="timeline-item modified">
+          <div class="timeline-title">🔧 修复路径归一化</div>
+          <div class="timeline-desc">registry.py 支持多种方向输入格式（CW/clockwise/ccw）</div>
+        </div>
+
+        <div class="timeline-item added">
+          <div class="timeline-title">🧪 添加测试覆盖</div>
+          <div class="timeline-desc">新增 120 行测试，覆盖金字塔创建和环形模式场景</div>
+        </div>
+
+        <div class="timeline-item added">
+          <div class="timeline-title">📝 更新文档</div>
+          <div class="timeline-desc">CODEX.md 和系统记录更新，记录架构决策</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Module 5: 代码详情 -->
+  <section class="module" id="module-4">
+    <div class="module-content">
+      <div class="module-header">
+        <div class="module-number">05</div>
+        <h1 class="module-title">代码修改详情</h1>
+        <p class="module-subtitle">runner.py 和 registry.py 的关键改动</p>
+      </div>
+
+      <!-- Change 1 -->
+      <div class="code-block-wrapper">
+        <div class="file-header">
+          <span class="file-header-icon">📄</span>
+          <span class="file-header-path">src/sub_agent_runtime/runner.py</span>
+          <span class="file-header-stats">
+            <span class="added">+1</span>
+          </span>
+        </div>
+        <div class="code-block-content">
+          <div class="code-panel">
+            <pre><span class="code-line"><span class="line-number">851</span><span class="line-content">                <span class="code-property">round_no</span>=round_no,</span></span>
+<span class="code-line"><span class="line-number">852</span><span class="line-content">                <span class="code-property">max_rounds</span>=request.max_rounds,</span></span>
+<span class="code-line"><span class="line-number">853</span><span class="line-content">                <span class="code-property">executed_action_count</span>=<span class="code-function">len</span>(executed_actions),</span></span>
+<span class="code-line added"><span class="line-number">854</span><span class="line-content">                <span class="code-property">executed_actions</span>=executed_actions,</span></span>
+<span class="code-line"><span class="line-number">855</span><span class="line-content">                <span class="code-property">last_action_result</span>=last_action_result,</span></span></pre>
+          </div>
+          <div class="explanation-panel">
+            <span class="translation-label">白话解释</span>
+            <div class="translation-lines">
+              <p class="tl"><strong>为什么添加这个参数？</strong></p>
+              <p class="tl">原来只传递 <code>executed_action_count</code>（数量），但现在需要知道<strong>具体执行了哪些动作</strong>才能判断状态。</p>
+              <p class="tl">新的 <code>executed_actions</code> 参数让函数能看到完整的动作历史。这就像从"知道吃了几顿饭"变成"知道每顿饭吃了什么"。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Change 2 -->
+      <div class="code-block-wrapper">
+        <div class="file-header">
+          <span class="file-header-icon">📄</span>
+          <span class="file-header-path">src/sub_agent_runtime/runner.py</span>
+          <span class="file-header-stats">
+            <span class="removed">-3</span>
+            <span class="added">+5</span>
+          </span>
+        </div>
+        <div class="code-block-content">
+          <div class="code-panel">
+            <pre><span class="code-line removed"><span class="line-number">1796</span><span class="line-content">        no_solid = solid_count == <span class="code-number">0</span></span></span>
+<span class="code-line removed"><span class="line-number">1797</span><span class="line-content">        <span class="code-keyword">if</span> solid_count <span class="code-keyword">is</span> <span class="code-keyword">None</span>:</span></span>
+<span class="code-line removed"><span class="line-number">1798</span><span class="line-content">            no_solid = executed_action_count == <span class="code-number">0</span></span></span>
+<span class="code-line added"><span class="line-number">1796</span><span class="line-content">        no_solid = <span class="code-keyword">self</span>._is_pre_solid_bootstrap_state(</span></span>
+<span class="code-line added"><span class="line-number">1797</span><span class="line-content">            <span class="code-property">solid_count</span>=solid_count,</span></span>
+<span class="code-line added"><span class="line-number">1798</span><span class="line-content">            <span class="code-property">executed_actions</span>=executed_actions,</span></span>
+<span class="code-line added"><span class="line-number">1799</span><span class="line-content">            <span class="code-property">executed_action_count</span>=executed_action_count,</span></span>
+<span class="code-line added"><span class="line-number">1800</span><span class="line-content">        )</span></span></pre>
+          </div>
+          <div class="explanation-panel">
+            <span class="translation-label">白话解释</span>
+            <div class="translation-lines">
+              <p class="tl"><strong>状态检测逻辑重构</strong></p>
+              <p class="tl">原来用简单的 <code>solid_count == 0</code> 判断是否在启动阶段，但这个方法<strong>不可靠</strong>。</p>
+              <p class="tl">新的 <code>_is_pre_solid_bootstrap_state</code> 方法会分析已执行的动作类型，准确识别"还没有 solid 但已执行关键动作"的状态。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Change 3 -->
+      <div class="code-block-wrapper">
+        <div class="file-header">
+          <span class="file-header-icon">📄</span>
+          <span class="file-header-path">src/sub_agent_runtime/runner.py</span>
+          <span class="file-header-stats">
+            <span class="added">+8</span>
+          </span>
+        </div>
+        <div class="code-block-content">
+          <div class="code-panel">
+            <pre><span class="code-line added"><span class="line-number">1871</span><span class="line-content">            annular_pattern_completion = <span class="code-keyword">self</span>._append_annular_seed_pattern_completion(</span></span>
+<span class="code-line added"><span class="line-number">1872</span><span class="line-content">                <span class="code-property">actions</span>=actions,</span></span>
+<span class="code-line added"><span class="line-number">1873</span><span class="line-content">                <span class="code-property">requirements</span>=requirements,</span></span>
+<span class="code-line added"><span class="line-number">1874</span><span class="line-content">                <span class="code-property">round_no</span>=round_no,</span></span>
+<span class="code-line added"><span class="line-number">1875</span><span class="line-content">                <span class="code-property">max_rounds</span>=max_rounds,</span></span>
+<span class="code-line added"><span class="line-number">1876</span><span class="line-content">            )</span></span>
+<span class="code-line added"><span class="line-number">1877</span><span class="line-content">            <span class="code-keyword">if</span> annular_pattern_completion <span class="code-keyword">is</span> <span class="code-keyword">not</span> <span class="code-keyword">None</span>:</span></span>
+<span class="code-line added"><span class="line-number">1878</span><span class="line-content">                <span class="code-keyword">return</span> annular_pattern_completion, <span class="code-string">"annular_seed_window_completed_with_pattern"</span></span></span></pre>
+          </div>
+          <div class="explanation-panel">
+            <span class="translation-label">白话解释</span>
+            <div class="translation-lines">
+              <p class="tl"><strong>环形种子模式自动完成</strong></p>
+              <p class="tl">新增方法检测用户是否正在创建环形（圆周阵列）特征但还没完成。</p>
+              <p class="tl">当检测到 1 个孔的特征时，系统会自动补全剩余 5 个孔，就像螺栓孔阵列的自动完成。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Change 4: registry.py -->
+      <div class="code-block-wrapper">
+        <div class="file-header">
+          <span class="file-header-icon">📄</span>
+          <span class="file-header-path">src/sandbox_mcp_server/registry.py</span>
+          <span class="file-header-stats">
+            <span class="removed">-3</span>
+            <span class="added">+10</span>
+          </span>
+        </div>
+        <div class="code-block-content">
+          <div class="code-panel">
+            <pre><span class="code-line removed"><span class="line-number">1438</span><span class="line-content">        direction = _normalize_path_direction(direction_raw, plane=plane)</span></span>
+<span class="code-line removed"><span class="line-number">1439</span><span class="line-content">        <span class="code-keyword">if</span> direction <span class="code-keyword">is</span> <span class="code-keyword">not</span> <span class="code-keyword">None</span>:</span></span>
+<span class="code-line removed"><span class="line-number">1440</span><span class="line-content">            normalized_item[<span class="code-string">"direction"</span>] = direction</span></span>
+<span class="code-line added"><span class="line-number">1438</span><span class="line-content">        direction_token = (</span></span>
+<span class="code-line added"><span class="line-number">1439</span><span class="line-content">            direction_raw.strip().lower().replace(<span class="code-string">" "</span>, <span class="code-string">"_"</span>)</span></span>
+<span class="code-line added"><span class="line-number">1440</span><span class="line-content">            <span class="code-keyword">if</span> <span class="code-function">isinstance</span>(direction_raw, <span class="code-keyword">str</span>) <span class="code-keyword">else</span> <span class="code-keyword">None</span></span></span>
+<span class="code-line added"><span class="line-number">1441</span><span class="line-content">        )</span></span>
+<span class="code-line added"><span class="line-number">1442</span><span class="line-content">        <span class="code-keyword">if</span> (</span></span>
+<span class="code-line added"><span class="line-number">1443</span><span class="line-content">            normalized_type <span class="code-keyword">in</span> {<span class="code-string">"arc"</span>, <span class="code-string">"tangent_arc"</span>}</span></span>
+<span class="code-line added"><span class="line-number">1444</span><span class="line-content">            <span class="code-keyword">and</span> direction_token <span class="code-keyword">in</span> {<span class="code-string">"cw"</span>, <span class="code-string">"clockwise"</span>, <span class="code-string">"ccw"</span>,</span></span>
+<span class="code-line added"><span class="line-number">1445</span><span class="line-content">                                   <span class="code-string">"counterclockwise"</span>, <span class="code-string">"counter_clockwise"</span>}</span></span>
+<span class="code-line added"><span class="line-number">1446</span><span class="line-content">        ):</span></span>
+<span class="code-line added"><span class="line-number">1447</span><span class="line-content">            normalized_item[<span class="code-string">"direction"</span>] = direction_token</span></span></pre>
+          </div>
+          <div class="explanation-panel">
+            <span class="translation-label">白话解释</span>
+            <div class="translation-lines">
+              <p class="tl"><strong>路径方向归一化改进</strong></p>
+              <p class="tl">原来只支持标准化的方向值，现在支持多种输入格式（CW/clockwise/ccw 等）。</p>
+              <p class="tl">通过标准化处理（转小写、去空格）后，再匹配有效的方向标记，提高了用户输入的容错性。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    // Navigation
+    function scrollToModule(index) {
+      const module = document.getElementById(`module-${index}`);
+      if (module) {
+        module.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+
+    // Update active nav dot on scroll
+    const modules = document.querySelectorAll('.module');
+    const navDots = document.querySelectorAll('.nav-dot');
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const index = Array.from(modules).indexOf(entry.target);
+          navDots.forEach((dot, i) => {
+            dot.classList.toggle('active', i === index);
+          });
+        }
+      });
+    }, { rootMargin: '-50% 0px -50% 0px', threshold: 0 });
+
+    modules.forEach(module => observer.observe(module));
+
+    // Drag-to-scroll for code blocks
+    document.querySelectorAll('.translation-code').forEach(codeBlock => {
+      let isDown = false;
+      let startX;
+      let scrollLeft;
+
+      codeBlock.addEventListener('mousedown', (e) => {
+        isDown = true;
+        codeBlock.style.cursor = 'grabbing';
+        startX = e.pageX - codeBlock.offsetLeft;
+        scrollLeft = codeBlock.scrollLeft;
+      });
+
+      codeBlock.addEventListener('mouseleave', () => {
+        isDown = false;
+        codeBlock.style.cursor = 'grab';
+      });
+
+      codeBlock.addEventListener('mouseup', () => {
+        isDown = false;
+        codeBlock.style.cursor = 'grab';
+      });
+
+      codeBlock.addEventListener('mousemove', (e) => {
+        if (!isDown) return;
+        e.preventDefault();
+        const x = e.pageX - codeBlock.offsetLeft;
+        const walk = (x - startX) * 2;
+        codeBlock.scrollLeft = scrollLeft - walk;
+      });
+    });
+
+    // Chat simulation
+    let currentStep = 1;
+    const totalSteps = 8;
+
+    function nextChatStep() {
+      if (currentStep < totalSteps) {
+        currentStep++;
+        const msg = document.querySelector(`[data-step="${currentStep}"]`);
+        if (msg) {
+          msg.style.display = 'flex';
+          msg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        document.getElementById('chat-progress').textContent = `步骤 ${currentStep}/${totalSteps}`;
+      }
+    }
+
+    function resetChat() {
+      for (let i = 2; i <= totalSteps; i++) {
+        const msg = document.querySelector(`[data-step="${i}"]`);
+        if (msg) msg.style.display = 'none';
+      }
+      currentStep = 1;
+      document.getElementById('chat-progress').textContent = `步骤 1/${totalSteps}`;
+    }
+
+    // Flow animation
+    const flowSteps = [
+      { actor: 'user', log: '<span class="timestamp">[10:23:01]</span> <span class="level">INFO</span> 收到用户请求: "创建金字塔"' },
+      { actor: 'runner', log: '<span class="timestamp">[10:23:01]</span> <span class="level">INFO</span> Runner._select_actions_for_round() 开始执行' },
+      { actor: 'state', log: '<span class="timestamp">[10:23:02]</span> <span class="level">INFO</span> 调用 _is_pre_solid_bootstrap_state(solid_count=0, actions=[])' },
+      { actor: 'state', log: '<span class="timestamp">[10:23:02]</span> <span class="level success">OK</span> 判定结果: True (预 solid 启动状态)' },
+      { actor: 'action', log: '<span class="timestamp">[10:23:03]</span> <span class="level">INFO</span> 选择动作: create_sketch(plane="XY")' },
+      { actor: 'cad', log: '<span class="timestamp">[10:23:04]</span> <span class="level success">OK</span> 草图创建成功' },
+    ];
+    let flowStepIndex = 0;
+
+    function nextFlowStep() {
+      if (flowStepIndex < flowSteps.length - 1) {
+        flowStepIndex++;
+        const step = flowSteps[flowStepIndex];
+
+        // Update active actor
+        document.querySelectorAll('.flow-actor').forEach(el => el.classList.remove('active'));
+        document.querySelector(`[data-actor="${step.actor}"]`).classList.add('active');
+
+        // Add log line
+        const log = document.getElementById('flow-log');
+        const line = document.createElement('span');
+        line.className = 'flow-log-line';
+        line.innerHTML = step.log;
+        log.appendChild(line);
+        log.scrollTop = log.scrollHeight;
+      }
+    }
+
+    function resetFlow() {
+      flowStepIndex = 0;
+      document.querySelectorAll('.flow-actor').forEach(el => el.classList.remove('active'));
+      document.querySelector('[data-actor="user"]').classList.add('active');
+      document.getElementById('flow-log').innerHTML = flowSteps[0].log;
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const current = document.querySelector('.nav-dot.active');
+        const next = current?.nextElementSibling;
+        if (next) next.click();
+      } else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        const current = document.querySelector('.nav-dot.active');
+        const prev = current?.previousElementSibling;
+        if (prev) prev.click();
+      }
+    });
+
+    // Glossary Tooltips
+    let activeTooltip = null;
+
+    document.querySelectorAll('.term').forEach(term => {
+      const tip = document.createElement('span');
+      tip.className = 'term-tooltip';
+      tip.textContent = term.dataset.definition;
+
+      term.addEventListener('mouseenter', (e) => {
+        const rect = term.getBoundingClientRect();
+        tip.style.left = (rect.left + rect.width/2 - 150) + 'px';
+        tip.style.top = (rect.top - 60) + 'px';
+        document.body.appendChild(tip);
+        requestAnimationFrame(() => tip.classList.add('visible'));
+        activeTooltip = tip;
+      });
+
+      term.addEventListener('mouseleave', () => {
+        tip.classList.remove('visible');
+        setTimeout(() => tip.remove(), 150);
+        activeTooltip = null;
+      });
+    });
+  </script>
+</body>
+</html>
